@@ -19,7 +19,9 @@ class ExcelPredictionManager:
 
             imported_count = 0
             skipped_count = 0
+            consecutive_skipped = 0
             predictions = {}
+            last_numero = None
 
             for row in sheet.iter_rows(min_row=2, values_only=True):
                 if not row[0] or not row[1] or not row[2]:
@@ -39,8 +41,15 @@ class ExcelPredictionManager:
 
                 prediction_key = f"{numero_int}"
 
+                # Vérifier si déjà lancé
                 if prediction_key in self.predictions and self.predictions[prediction_key].get("launched"):
                     skipped_count += 1
+                    continue
+
+                # Vérifier si consécutif au précédent (ignorer si numéro actuel = précédent + 1)
+                if last_numero is not None and numero_int == last_numero + 1:
+                    consecutive_skipped += 1
+                    print(f"⚠️ Numéro {numero_int} ignoré à l'import (consécutif à {last_numero})")
                     continue
 
                 predictions[prediction_key] = {
@@ -53,6 +62,7 @@ class ExcelPredictionManager:
                     "imported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 imported_count += 1
+                last_numero = numero_int  # Mémoriser le dernier numéro valide
 
             self.predictions.update(predictions)
             self.save_predictions()
@@ -61,6 +71,7 @@ class ExcelPredictionManager:
                 "success": True,
                 "imported": imported_count,
                 "skipped": skipped_count,
+                "consecutive_skipped": consecutive_skipped,
                 "total": len(self.predictions)
             }
 

@@ -10,7 +10,6 @@ from telethon import TelegramClient, events
 from telethon.events import ChatAction
 from dotenv import load_dotenv
 from predictor import CardPredictor
-from scheduler import PredictionScheduler
 from yaml_manager import init_database, db
 from excel_importer import ExcelPredictionManager
 from aiohttp import web
@@ -123,9 +122,6 @@ database = init_database()
 
 # Gestionnaire de prédictions
 predictor = CardPredictor()
-
-# Planificateur automatique
-scheduler = None
 
 # Gestionnaire d'importation Excel
 excel_manager = ExcelPredictionManager()
@@ -505,8 +501,8 @@ async def show_excel_stats(event):
 
 # Commande /report supprimée selon demande utilisateur
 
-@client.on(events.NewMessage(pattern='/scheduler'))
-async def manage_scheduler(event):
+@client.on(events.NewMessage(pattern='/scheduler_disabled'))
+async def manage_scheduler_disabled(event):
     """Gestion du planificateur automatique (admin uniquement)"""
     global scheduler
     try:
@@ -607,8 +603,8 @@ Utilisez `/scheduler start` pour activer le planificateur.""")
         print(f"Erreur dans manage_scheduler: {e}")
         await event.respond(f"❌ Erreur: {e}")
 
-@client.on(events.NewMessage(pattern='/schedule_info'))
-async def schedule_info(event):
+@client.on(events.NewMessage(pattern='/schedule_info_disabled'))
+async def schedule_info_disabled(event):
     """Affiche les informations détaillées de la planification (admin uniquement)"""
     try:
         if event.sender_id != ADMIN_ID:
@@ -761,15 +757,15 @@ async def excel_clear(event):
 
 @client.on(events.NewMessage(pattern='/deploy'))
 async def generate_deploy_package(event):
-    """Génère le package de déploiement Render.com complet et prêt à déployer (admin uniquement)"""
+    """Génère le package de déploiement Replit complet et prêt à déployer (admin uniquement)"""
     try:
         if event.sender_id != ADMIN_ID:
             return
 
-        await event.respond("🚀 **Génération du package Render.com complet...**")
+        await event.respond("🚀 **Génération du package Replit complet...**")
 
         try:
-            package_name = 'render_deployment_complete.zip'
+            package_name = 'replit_deployment_complete.zip'
 
             with zipfile.ZipFile(package_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 # 1. Fichiers Python essentiels du projet
@@ -777,8 +773,7 @@ async def generate_deploy_package(event):
                     'main.py',
                     'predictor.py',
                     'yaml_manager.py',
-                    'excel_importer.py',
-                    'scheduler.py'
+                    'excel_importer.py'
                 ]
 
                 for file_path in python_files:
@@ -786,78 +781,55 @@ async def generate_deploy_package(event):
                         zipf.write(file_path)
                         print(f"  ✅ Ajouté: {file_path}")
 
-                # 2. Créer render_main.py (point d'entrée optimisé Render.com)
-                render_main_content = """#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-\"\"\"Bot Telegram optimisé pour Render.com avec port 10000\"\"\"
+                # 2. Créer .replit (configuration Replit)
+                replit_content = f"""run = "python main.py"
+entrypoint = "main.py"
+modules = ["python-3.11"]
 
-import os
-import sys
-import asyncio
-import logging
+[nix]
+channel = "stable-24_05"
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+[deployment]
+run = ["python", "main.py"]
+deploymentTarget = "cloudrun"
 
-# Vérification des variables d'environnement critiques
-REQUIRED_VARS = ['API_ID', 'API_HASH', 'BOT_TOKEN']
-missing_vars = [var for var in REQUIRED_VARS if not os.getenv(var)]
-
-if missing_vars:
-    logging.error(f"❌ Variables d'environnement manquantes: {', '.join(missing_vars)}")
-    logging.error("Configurez ces variables dans Render.com Dashboard")
-    sys.exit(1)
-
-# Import du bot principal
-try:
-    from main import main
-    logging.info("✅ Module principal importé avec succès")
-except ImportError as e:
-    logging.error(f"❌ Erreur import module principal: {e}")
-    sys.exit(1)
-
-if __name__ == "__main__":
-    logging.info("🚀 Démarrage bot Render.com...")
-    logging.info(f"Port configuré: {os.getenv('PORT', '10000')}")
-    
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logging.info("🛑 Arrêt du bot demandé")
-    except Exception as e:
-        logging.error(f"❌ Erreur critique: {e}")
-        sys.exit(1)
+[env]
+PORT = "{PORT}"
+DISPLAY_CHANNEL = "{DISPLAY_CHANNEL}"
+PREDICTION_INTERVAL = "{prediction_interval}"
 """
-                zipf.writestr('render_main.py', render_main_content)
-                print("  ✅ Créé: render_main.py")
+                zipf.writestr('.replit', replit_content)
+                print("  ✅ Créé: .replit")
+                
+                # 3. Créer replit.nix
+                nix_content = """{ pkgs }: {
+  deps = [
+    pkgs.python311
+    pkgs.python311Packages.pip
+  ];
+}
+"""
+                zipf.writestr('replit.nix', nix_content)
+                print("  ✅ Créé: replit.nix")
 
-                # 3. Fichier .env.example avec canal de diffusion mis à jour
-                env_example_content = f"""# Configuration Telegram Bot - Render.com
-# Remplacez ces valeurs par vos vraies credentials
+                # 4. Fichier .env.example
+                env_example_content = f"""# Configuration Telegram Bot - Replit
+# Ajoutez ces secrets dans Replit Secrets
 
 API_ID=votre_api_id
 API_HASH=votre_api_hash
 BOT_TOKEN=votre_bot_token
 ADMIN_ID=votre_admin_id
 
-# Configuration automatique Render.com
+# Configuration automatique
 PORT=10000
 DISPLAY_CHANNEL=-1002999811353
 PREDICTION_INTERVAL={prediction_interval}
-
-# Base de données (optionnel - YAML par défaut)
-# DATABASE_URL=postgresql://user:pass@host:5432/dbname
 """
                 zipf.writestr('.env.example', env_example_content)
                 print("  ✅ Créé: .env.example")
 
-                # 4. requirements.txt complet
+                # 5. requirements.txt complet
                 requirements_content = """telethon==1.35.0
 aiohttp==3.9.5
 python-dotenv==1.0.1
@@ -866,40 +838,6 @@ openpyxl==3.1.2
 """
                 zipf.writestr('requirements.txt', requirements_content)
                 print("  ✅ Créé: requirements.txt")
-
-                # 5. runtime.txt pour spécifier la version Python
-                runtime_content = "python-3.11.0"
-                zipf.writestr('runtime.txt', runtime_content)
-                print("  ✅ Créé: runtime.txt")
-
-                # 6. render.yaml - Configuration Render.com complète
-                render_yaml = f"""services:
-  - type: web
-    name: telegram-card-bot
-    env: python
-    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
-    startCommand: "python render_main.py"
-    plan: free
-    region: frankfurt
-    envVars:
-      - key: API_ID
-        sync: false
-      - key: API_HASH
-        sync: false
-      - key: BOT_TOKEN
-        sync: false
-      - key: ADMIN_ID
-        sync: false
-      - key: PORT
-        fromGroup: web
-      - key: DISPLAY_CHANNEL
-        value: "-1002999811353"
-      - key: PREDICTION_INTERVAL
-        value: "{prediction_interval}"
-    healthCheckPath: "/health"
-"""
-                zipf.writestr('render.yaml', render_yaml)
-                print("  ✅ Créé: render.yaml")
 
                 # 7. .gitignore pour éviter d'uploader des fichiers sensibles
                 gitignore_content = """# Fichiers sensibles
@@ -934,12 +872,12 @@ Thumbs.db
                 zipf.writestr('.gitignore', gitignore_content)
                 print("  ✅ Créé: .gitignore")
 
-                # 8. README.md complet avec instructions détaillées
-                readme_content = f"""# 📦 Bot Telegram - Package Render.com Complet
+                # 6. README.md complet avec instructions Replit
+                readme_content = f"""# 📦 Bot Telegram - Package Replit Complet
 
 ## 🎯 Package Prêt pour Déploiement
 
-Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Render.com** avec le **port 10000**.
+Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Replit**.
 
 ---
 
@@ -950,46 +888,26 @@ Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur
 - `predictor.py` - Moteur de prédiction Excel
 - `yaml_manager.py` - Gestionnaire de données YAML
 - `excel_importer.py` - Import et gestion Excel
-- `scheduler.py` - Planificateur automatique
-- `render_main.py` - Point d'entrée optimisé Render.com
 
 ### Configuration (✅ Prête)
-- `render.yaml` - Configuration Render.com automatique
+- `.replit` - Configuration Replit
+- `replit.nix` - Dépendances système
 - `requirements.txt` - Dépendances Python
-- `runtime.txt` - Version Python (3.11)
 - `.env.example` - Template variables d'environnement
 - `.gitignore` - Fichiers à ignorer
 
 ---
 
-## 🚀 Déploiement sur Render.com
+## 🚀 Déploiement sur Replit
 
-### Étape 1: Préparer le Repository
-```bash
-# Extraire le ZIP
-unzip render_deployment_complete.zip -d mon-bot-telegram/
-cd mon-bot-telegram/
+### Étape 1: Créer un nouveau Repl
+1. Aller sur [replit.com](https://replit.com)
+2. Créer un nouveau Repl Python
+3. Uploader tous les fichiers du ZIP
 
-# Initialiser Git (si nécessaire)
-git init
-git add .
-git commit -m "Initial deployment"
-
-# Push vers GitHub/GitLab
-git remote add origin https://github.com/votre-username/votre-repo.git
-git push -u origin main
-```
-
-### Étape 2: Créer le Service sur Render.com
-1. Aller sur [render.com](https://render.com)
-2. Se connecter ou créer un compte (gratuit)
-3. Cliquer **"New +"** → **"Web Service"**
-4. Connecter votre repository GitHub/GitLab
-5. Render détectera automatiquement `render.yaml`
-
-### Étape 3: Variables d'Environnement
-Ajouter dans Render.com Dashboard → Environment:
-
+### Étape 2: Configurer les Secrets
+1. Cliquer sur l'icône "🔒 Secrets" dans le panneau de gauche
+2. Ajouter ces variables:
 ```
 API_ID = votre_api_id_telegram
 API_HASH = votre_api_hash_telegram
@@ -997,65 +915,44 @@ BOT_TOKEN = votre_bot_token
 ADMIN_ID = votre_telegram_user_id
 ```
 
-**Note:** Le `PORT`, `DISPLAY_CHANNEL` et autres sont déjà configurés dans `render.yaml`
-
-### Étape 4: Déployer
-1. Cliquer **"Deploy"**
-2. Attendre la fin du build (2-3 minutes)
-3. Votre bot sera accessible à l'URL fournie
-
----
-
-## ✅ Vérification Post-Déploiement
-
-### 1. Health Check
-Visitez: `https://votre-service.onrender.com/health`
-
-Réponse attendue:
-```
-Bot is running!
-```
-
-### 2. Logs Render
-Vérifiez les logs dans le Dashboard:
-```
-✅ Serveur web démarré sur 0.0.0.0:10000
-✅ Configuration chargée depuis JSON
-Bot démarré avec succès...
-Bot connecté: @Votre_Bot
-✅ Bot en ligne et en attente de messages...
-```
-
-### 3. Test Telegram
-1. Cherchez votre bot sur Telegram
-2. Envoyez `/start`
-3. Le bot doit répondre immédiatement
+### Étape 3: Lancer le Bot
+1. Cliquer sur le bouton **Run** vert en haut
+2. Le bot démarrera automatiquement
+3. Vérifier les logs pour confirmation
 
 ---
 
 ## 🔧 Fonctionnalités Déployées
 
-### ✅ Prédictions Excel
-- Import automatique fichiers Excel (.xlsx)
-- Surveillance canal source
+### ✅ Prédictions Excel Automatiques
+- Import fichiers Excel (.xlsx)
+- Surveillance du canal source
 - Lancement anticipé (tolérance 0-4 parties)
-- Format V1/V2 selon type de victoire
+- **Filtrage automatique des numéros consécutifs**
+- Format V1 (Joueur) / V2 (Banquier)
 - Vérification avec offsets (0, 1, 2)
+
+### 📋 Format des Messages de Prédiction
+
+**Au lancement:**
+- Victoire Joueur: `🔵XXX 🔵V1✍🏻: statut :⏳⏳`
+- Victoire Banquier: `🔵XXX 🔵V2✍🏻: statut :⏳⏳`
+
+**Après vérification:**
+- Exact (offset 0): `🔵XXX 🔵V1✍🏻: statut :✅0️⃣`
+- Offset +1: `🔵XXX 🔵V1✍🏻: statut :✅1️⃣`
+- Offset +2: `🔵XXX 🔵V1✍🏻: statut :✅2️⃣`
+- Échec: `🔵XXX 🔵V1✍🏻: statut :⭕✍🏻`
 
 ### ✅ Commandes Admin
 - `/start` - Aide et bienvenue
 - `/status` - État du bot
-- `/excel_status` - Statut prédictions
+- `/excel_status` - Statut prédictions Excel
 - `/excel_clear` - Effacer prédictions
 - `/sta` - Statistiques Excel
 - `/intervalle [min]` - Configurer délai
 - `/reset` - Réinitialisation
 - `/deploy` - Créer package
-
-### ✅ Configuration Canaux
-- Invitation automatique lors de l'ajout
-- Configuration via `/set_stat` et `/set_display`
-- Sauvegarde persistante JSON + DB
 
 ---
 
@@ -1063,35 +960,23 @@ Bot connecté: @Votre_Bot
 
 | Paramètre | Valeur |
 |-----------|--------|
-| **Port** | 10000 (auto Render) |
-| **Health Check** | `/health` endpoint |
+| **Port** | 10000 |
 | **Canal Display** | -1002999811353 |
 | **Intervalle** | {prediction_interval} minute(s) |
-| **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳ |
-| **Format V2** | 🔵XXX 🔵V2✍🏻: statut :⏳ |
+| **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳⏳ |
+| **Format V2** | 🔵XXX 🔵V2✍🏻: statut :⏳⏳ |
 
 ---
 
-## 🆘 Dépannage
+## 📥 Format Excel Requis
 
-### Bot ne démarre pas
-- ✅ Vérifier toutes les variables d'environnement sont définies
-- ✅ Vérifier `BOT_TOKEN` est valide
-- ✅ Consulter les logs Render
+| Date & Heure | Numéro | Victoire (Joueur/Banquier) |
+|--------------|--------|----------------------------|
+| 03/01/2025 - 14:20 | 881 | Banquier |
+| 03/01/2025 - 14:26 | 886 | Joueur |
+| 03/01/2025 - 14:40 | 891 | Joueur |
 
-### Port Error
-- Le port 10000 est **automatiquement configuré** par Render via `fromGroup: web`
-- Pas besoin de le changer manuellement
-
-### Bot ne répond pas
-- ✅ Vérifier le bot est bien connecté (logs)
-- ✅ Tester le health check endpoint
-- ✅ Vérifier les canaux sont bien configurés
-
-### Import Excel échoue
-- Format requis: 3 colonnes (Date & Heure, Numéro, Victoire)
-- Victoire doit être "Joueur" ou "Banquier"
-- Fichier doit être .xlsx ou .xls
+**Note:** Les numéros consécutifs (ex: 23→24) sont automatiquement filtrés à l'import.
 
 ---
 
@@ -1099,16 +984,9 @@ Bot connecté: @Votre_Bot
 
 **Développé par:** Sossou Kouamé Appolinaire  
 **Version:** {datetime.now().strftime('%Y-%m-%d %H:%M')}  
-**Plateforme:** Render.com (Free Tier)
+**Plateforme:** Replit
 
-### Ressources
-- [Documentation Render](https://render.com/docs)
-- [Telethon Docs](https://docs.telethon.dev/)
-- [Bot API Telegram](https://core.telegram.org/bots/api)
-
----
-
-**🚀 Le bot est 100% prêt pour la production sur Render.com!**
+**🚀 Le bot est 100% prêt pour Replit!**
 """
                 zipf.writestr('README.md', readme_content)
                 print("  ✅ Créé: README.md")
@@ -1124,32 +1002,36 @@ Bot connecté: @Votre_Bot
 
             file_size = os.path.getsize(package_name) / 1024
 
-            await event.respond(f"""✅ **PACKAGE RENDER.COM COMPLET CRÉÉ!**
+            await event.respond(f"""✅ **PACKAGE REPLIT COMPLET CRÉÉ!**
 
 📦 **Fichier:** {package_name} ({file_size:.1f} KB)
 
-📋 **Contenu (11 fichiers):**
-✅ Code source complet (6 fichiers Python)
-✅ render_main.py - Point d'entrée optimisé
-✅ render.yaml - Config Render auto
-✅ requirements.txt + runtime.txt
+📋 **Contenu (10 fichiers):**
+✅ Code source complet (4 fichiers Python)
+✅ .replit + replit.nix - Config Replit
+✅ requirements.txt - Dépendances
 ✅ .env.example - Template variables
 ✅ .gitignore - Sécurité
 ✅ README.md - Guide complet
-✅ Procfile - Compatibilité
 ✅ data/ - Structure dossiers
 
-🚀 **Prêt pour Render.com:**
+🚀 **Prêt pour Replit:**
 • Port: 10000 ✅
-• Health Check: /health ✅
 • Canal Display: -1002999811353 ✅
-• Build/Start: Auto-configurés ✅
-• Variables: Template fourni ✅
+• Health Check: /health ✅
+• Filtrage consécutifs: Automatique ✅
+
+📋 **Format des messages de prédiction:**
+• Lancement: 🔵XXX 🔵V1✍🏻: statut :⏳⏳
+• Succès exact: 🔵XXX 🔵V1✍🏻: statut :✅0️⃣
+• Succès +1: 🔵XXX 🔵V1✍🏻: statut :✅1️⃣
+• Succès +2: 🔵XXX 🔵V1✍🏻: statut :✅2️⃣
+• Échec: 🔵XXX 🔵V1✍🏻: statut :⭕✍🏻
 
 🔧 **3 étapes pour déployer:**
-1. Extraire le ZIP
-2. Push vers GitHub
-3. Connecter à Render.com
+1. Créer un nouveau Repl Python
+2. Uploader tous les fichiers
+3. Configurer les Secrets et Run
 
 📖 **Guide complet dans README.md**
 
@@ -1159,7 +1041,7 @@ Le package est 100% compatible et sans erreurs! 🎉""")
             await client.send_file(
                 event.chat_id,
                 package_name,
-                caption=f"📦 **Package Render.com Complet v{datetime.now().strftime('%Y%m%d')}** - Prêt pour déploiement sans erreur!"
+                caption=f"📦 **Package Replit Complet v{datetime.now().strftime('%Y%m%d')}** - Prêt pour déploiement!"
             )
 
             print(f"✅ Package créé: {package_name} ({file_size:.1f} KB)")
@@ -1190,20 +1072,23 @@ async def handle_messages(event):
 
                 if result["success"]:
                     stats = excel_manager.get_stats()
+                    consecutive_info = f"\n• Numéros consécutifs ignorés: {result.get('consecutive_skipped', 0)}" if result.get('consecutive_skipped', 0) > 0 else ""
                     msg = f"""✅ **Import Excel réussi!**
 
 📊 **Résumé**:
 • Prédictions importées: {result['imported']}
-• Prédictions ignorées: {result['skipped']}
+• Prédictions ignorées (déjà lancées): {result['skipped']}{consecutive_info}
 • Total en base: {stats['total']}
 
 📋 **Statistiques**:
 • En attente: {stats['pending']}
 • Lancées: {stats['launched']}
 
+⚠️ **Note**: Les numéros consécutifs (ex: 23→24) sont automatiquement filtrés pour éviter les doublons.
+
 Le système surveillera maintenant le canal source et lancera les prédictions automatiquement quand les numéros seront proches."""
                     await event.respond(msg)
-                    print(f"✅ Import Excel réussi: {result['imported']} prédictions importées")
+                    print(f"✅ Import Excel réussi: {result['imported']} prédictions importées, {result.get('consecutive_skipped', 0)} consécutifs ignorés")
                 else:
                     await event.respond(f"❌ **Erreur lors de l'import**: {result['error']}")
                     print(f"❌ Erreur import Excel: {result['error']}")
@@ -1315,37 +1200,7 @@ Le système surveillera maintenant le canal source et lancera les prédictions a
                     status_text = f"🔵{expired_num} statut :❌"
                     await broadcast(status_text)
 
-        # Vérification des prédictions automatiques du scheduler
-        if scheduler and scheduler.schedule_data:
-            # Récupère les numéros des prédictions automatiques en attente
-            pending_auto_predictions = []
-            for numero_str, data in scheduler.schedule_data.items():
-                if data["launched"] and not data["verified"]:
-                    numero_int = int(numero_str.replace('N', ''))
-                    pending_auto_predictions.append(numero_int)
-
-            if pending_auto_predictions:
-                # Vérifie si ce message correspond à une prédiction automatique
-                predicted_num, status = scheduler.verify_prediction_from_message(message_text, pending_auto_predictions)
-
-                if predicted_num and status:
-                    # Met à jour la prédiction automatique
-                    numero_str = f"N{predicted_num:03d}"
-                    if numero_str in scheduler.schedule_data:
-                        data = scheduler.schedule_data[numero_str]
-                        data["verified"] = True
-                        data["statut"] = status
-
-                        # Met à jour le message
-                        await scheduler.update_prediction_message(numero_str, data, status)
-
-                        # Ajouter une nouvelle prédiction pour maintenir la continuité
-                        scheduler.add_next_prediction()
-
-                        # Sauvegarde
-                        scheduler.save_schedule(scheduler.schedule_data)
-                        print(f"📝 Prédiction automatique {numero_str} vérifiée: {status}")
-                        print(f"🔄 Nouvelle prédiction générée pour maintenir la continuité")
+        # Scheduler désactivé - système Excel uniquement
 
         # Bilan automatique supprimé sur demande utilisateur
 
