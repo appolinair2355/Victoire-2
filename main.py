@@ -249,6 +249,39 @@ async def set_stat_channel(event):
     except Exception as e:
         print(f"Erreur dans set_stat_channel: {e}")
 
+@client.on(events.NewMessage(pattern=r'/force_set_stat (-?\d+)'))
+async def force_set_stat_channel(event):
+    """Force set statistics channel without waiting for invitation (admin only)"""
+    global detected_stat_channel
+
+    try:
+        # Only allow admin
+        if ADMIN_ID and event.sender_id != ADMIN_ID:
+            await event.respond("❌ Seul l'administrateur peut configurer les canaux")
+            return
+
+        # Extract channel ID from command
+        match = event.pattern_match
+        channel_id = int(match.group(1))
+
+        detected_stat_channel = channel_id
+
+        # Save configuration
+        save_config()
+
+        try:
+            chat = await client.get_entity(channel_id)
+            chat_title = getattr(chat, 'title', f'Canal {channel_id}')
+        except:
+            chat_title = f'Canal {channel_id}'
+
+        await event.respond(f"✅ **Canal de statistiques configuré (force)**\n📋 {chat_title}\n🆔 ID: {channel_id}\n\n✨ Le bot surveillera ce canal pour les prédictions\n💾 Configuration sauvegardée automatiquement")
+        print(f"Canal de statistiques configuré (force): {channel_id}")
+
+    except Exception as e:
+        print(f"Erreur dans force_set_stat_channel: {e}")
+        await event.respond(f"❌ Erreur: {e}")
+
 @client.on(events.NewMessage(pattern=r'/set_display (-?\d+)'))
 async def set_display_channel(event):
     """Set display channel (only admin in private)"""
@@ -289,6 +322,39 @@ async def set_display_channel(event):
 
     except Exception as e:
         print(f"Erreur dans set_display_channel: {e}")
+
+@client.on(events.NewMessage(pattern=r'/force_set_display (-?\d+)'))
+async def force_set_display_channel(event):
+    """Force set display channel without waiting for invitation (admin only)"""
+    global detected_display_channel
+
+    try:
+        # Only allow admin
+        if ADMIN_ID and event.sender_id != ADMIN_ID:
+            await event.respond("❌ Seul l'administrateur peut configurer les canaux")
+            return
+
+        # Extract channel ID from command
+        match = event.pattern_match
+        channel_id = int(match.group(1))
+
+        detected_display_channel = channel_id
+
+        # Save configuration
+        save_config()
+
+        try:
+            chat = await client.get_entity(channel_id)
+            chat_title = getattr(chat, 'title', f'Canal {channel_id}')
+        except:
+            chat_title = f'Canal {channel_id}'
+
+        await event.respond(f"✅ **Canal de diffusion configuré (force)**\n📋 {chat_title}\n🆔 ID: {channel_id}\n\n🚀 Le bot publiera les prédictions dans ce canal\n💾 Configuration sauvegardée automatiquement")
+        print(f"Canal de diffusion configuré (force): {channel_id}")
+
+    except Exception as e:
+        print(f"Erreur dans force_set_display_channel: {e}")
+        await event.respond(f"❌ Erreur: {e}")
 
 # --- COMMANDES DE BASE ---
 @client.on(events.NewMessage(pattern='/start'))
@@ -762,7 +828,7 @@ async def generate_deploy_package(event):
         if event.sender_id != ADMIN_ID:
             return
 
-        await event.respond("🚀 **Génération du package Replit complet...**")
+        await event.respond("🚀 **Génération du package Replit avec auto-configuration...**")
 
         try:
             package_name = 'replit_deployment_complete.zip'
@@ -781,7 +847,16 @@ async def generate_deploy_package(event):
                         zipf.write(file_path)
                         print(f"  ✅ Ajouté: {file_path}")
 
-                # 2. Créer .replit (configuration Replit)
+                # 2. Créer bot_config.json avec la configuration actuelle
+                config_data = {
+                    'stat_channel': detected_stat_channel,
+                    'display_channel': detected_display_channel,
+                    'prediction_interval': prediction_interval
+                }
+                zipf.writestr('bot_config.json', json.dumps(config_data, indent=2))
+                print("  ✅ Créé: bot_config.json avec configuration actuelle")
+
+                # 3. Créer .replit (configuration Replit)
                 replit_content = f"""run = "python main.py"
 entrypoint = "main.py"
 modules = ["python-3.11"]
@@ -795,7 +870,7 @@ deploymentTarget = "cloudrun"
 
 [env]
 PORT = "{PORT}"
-DISPLAY_CHANNEL = "{DISPLAY_CHANNEL}"
+DISPLAY_CHANNEL = "{detected_display_channel or DISPLAY_CHANNEL}"
 PREDICTION_INTERVAL = "{prediction_interval}"
 """
                 zipf.writestr('.replit', replit_content)
@@ -875,9 +950,9 @@ Thumbs.db
                 # 6. README.md complet avec instructions Replit
                 readme_content = f"""# 📦 Bot Telegram - Package Replit Complet
 
-## 🎯 Package Prêt pour Déploiement
+## 🎯 Package Prêt pour Déploiement avec Auto-Configuration
 
-Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Replit**.
+Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Replit** avec **configuration automatique** des canaux.
 
 ---
 
@@ -889,10 +964,11 @@ Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur
 - `yaml_manager.py` - Gestionnaire de données YAML
 - `excel_importer.py` - Import et gestion Excel
 
-### Configuration (✅ Prête)
+### Configuration (✅ Auto-configurée)
 - `.replit` - Configuration Replit
 - `replit.nix` - Dépendances système
 - `requirements.txt` - Dépendances Python
+- `bot_config.json` - Configuration des canaux (pré-configuré)
 - `.env.example` - Template variables d'environnement
 - `.gitignore` - Fichiers à ignorer
 
@@ -917,8 +993,33 @@ ADMIN_ID = votre_telegram_user_id
 
 ### Étape 3: Lancer le Bot
 1. Cliquer sur le bouton **Run** vert en haut
-2. Le bot démarrera automatiquement
+2. Le bot démarrera automatiquement avec les canaux pré-configurés
 3. Vérifier les logs pour confirmation
+
+---
+
+## ✨ Configuration Automatique des Canaux
+
+### 📊 Canaux Pré-Configurés
+
+Le fichier `bot_config.json` contient déjà vos canaux:
+- **Canal Stats**: {config_data['stat_channel'] or 'À configurer'}
+- **Canal Display**: {config_data['display_channel'] or 'À configurer'}
+- **Intervalle**: {config_data['prediction_interval']} minute(s)
+
+### 🔄 Le Bot Fonctionne Directement
+
+Une fois déployé et ajouté aux canaux:
+1. **Pas besoin de configuration manuelle** - Les canaux sont déjà enregistrés
+2. **Détection automatique** - Le bot utilise `bot_config.json` au démarrage
+3. **Fonctionnement immédiat** - Les prédictions commencent dès l'ajout du bot
+
+### 🛠️ Modifier la Configuration (Optionnel)
+
+Si vous voulez changer les canaux après déploiement:
+- `/force_set_stat [ID]` - Changer le canal stats
+- `/force_set_display [ID]` - Changer le canal display
+- `/intervalle [min]` - Ajuster l'intervalle
 
 ---
 
@@ -961,8 +1062,9 @@ ADMIN_ID = votre_telegram_user_id
 | Paramètre | Valeur |
 |-----------|--------|
 | **Port** | 10000 |
-| **Canal Display** | -1002999811353 |
-| **Intervalle** | {prediction_interval} minute(s) |
+| **Canal Stats** | {config_data['stat_channel']} |
+| **Canal Display** | {config_data['display_channel']} |
+| **Intervalle** | {config_data['prediction_interval']} minute(s) |
 | **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳⏳ |
 | **Format V2** | 🔵XXX 🔵V2✍🏻: statut :⏳⏳ |
 
@@ -1002,24 +1104,35 @@ ADMIN_ID = votre_telegram_user_id
 
             file_size = os.path.getsize(package_name) / 1024
 
-            await event.respond(f"""✅ **PACKAGE REPLIT COMPLET CRÉÉ!**
+            # Lire depuis bot_config.json pour garantir les bonnes valeurs
+            config_stats = detected_stat_channel or "Non configuré"
+            config_display = detected_display_channel or "Non configuré"
+            
+            canal_stats_info = f"• Canal Stats: {config_stats} ✅" if detected_stat_channel else "• Canal Stats: À configurer ⚠️"
+            canal_display_info = f"• Canal Display: {config_display} ✅" if detected_display_channel else "• Canal Display: À configurer ⚠️"
+
+            await event.respond(f"""✅ **PACKAGE REPLIT AVEC AUTO-CONFIG CRÉÉ!**
 
 📦 **Fichier:** {package_name} ({file_size:.1f} KB)
 
-📋 **Contenu (10 fichiers):**
+📋 **Contenu (11 fichiers):**
 ✅ Code source complet (4 fichiers Python)
 ✅ .replit + replit.nix - Config Replit
 ✅ requirements.txt - Dépendances
+✅ bot_config.json - **Configuration pré-enregistrée** 🆕
 ✅ .env.example - Template variables
 ✅ .gitignore - Sécurité
 ✅ README.md - Guide complet
 ✅ data/ - Structure dossiers
 
-🚀 **Prêt pour Replit:**
-• Port: 10000 ✅
-• Canal Display: -1002999811353 ✅
-• Health Check: /health ✅
-• Filtrage consécutifs: Automatique ✅
+🔧 **Configuration Automatique:**
+{canal_stats_info}
+{canal_display_info}
+• Intervalle: {prediction_interval} minute(s) ✅
+• Port: {PORT} ✅
+
+✨ **Fonctionnement Immédiat:**
+Le bot utilise `bot_config.json` au démarrage - **aucune configuration manuelle requise** après l'ajout aux canaux!
 
 📋 **Format des messages de prédiction:**
 • Lancement: 🔵XXX 🔵V1✍🏻: statut :⏳⏳
@@ -1028,14 +1141,14 @@ ADMIN_ID = votre_telegram_user_id
 • Succès +2: 🔵XXX 🔵V1✍🏻: statut :✅2️⃣
 • Échec: 🔵XXX 🔵V1✍🏻: statut :⭕✍🏻
 
-🔧 **3 étapes pour déployer:**
-1. Créer un nouveau Repl Python
+🚀 **3 étapes pour déployer:**
+1. Créer un nouveau Repl Python sur Replit
 2. Uploader tous les fichiers
-3. Configurer les Secrets et Run
+3. Configurer les Secrets (API_ID, API_HASH, BOT_TOKEN, ADMIN_ID) et Run
 
 📖 **Guide complet dans README.md**
 
-Le package est 100% compatible et sans erreurs! 🎉""")
+Le package est 100% prêt avec auto-configuration! 🎉""")
 
             # Envoyer le fichier
             await client.send_file(

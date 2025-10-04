@@ -1,8 +1,8 @@
-# 📦 Bot Telegram - Package  Complet
+# 📦 Bot Telegram - Package Replit Complet
 
-## 🎯 Package Prêt pour Déploiement
+## 🎯 Package Prêt pour Déploiement avec Auto-Configuration
 
-Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur ***.
+Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Replit** avec **configuration automatique** des canaux.
 
 ---
 
@@ -14,10 +14,11 @@ Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur
 - `yaml_manager.py` - Gestionnaire de données YAML
 - `excel_importer.py` - Import et gestion Excel
 
-### Configuration (✅ Prête)
+### Configuration (✅ Auto-configurée)
 - `.replit` - Configuration Replit
 - `replit.nix` - Dépendances système
 - `requirements.txt` - Dépendances Python
+- `bot_config.json` - Configuration des canaux (pré-configuré)
 - `.env.example` - Template variables d'environnement
 - `.gitignore` - Fichiers à ignorer
 
@@ -42,8 +43,33 @@ ADMIN_ID = votre_telegram_user_id
 
 ### Étape 3: Lancer le Bot
 1. Cliquer sur le bouton **Run** vert en haut
-2. Le bot démarrera automatiquement
+2. Le bot démarrera automatiquement avec les canaux pré-configurés
 3. Vérifier les logs pour confirmation
+
+---
+
+## ✨ Configuration Automatique des Canaux
+
+### 📊 Canaux Pré-Configurés
+
+Le fichier `bot_config.json` contient déjà vos canaux:
+- **Canal Stats**: -1002682552255
+- **Canal Display**: -1002999811353
+- **Intervalle**: 1 minute(s)
+
+### 🔄 Le Bot Fonctionne Directement
+
+Une fois déployé et ajouté aux canaux:
+1. **Pas besoin de configuration manuelle** - Les canaux sont déjà enregistrés
+2. **Détection automatique** - Le bot utilise `bot_config.json` au démarrage
+3. **Fonctionnement immédiat** - Les prédictions commencent dès l'ajout du bot
+
+### 🛠️ Modifier la Configuration (Optionnel)
+
+Si vous voulez changer les canaux après déploiement:
+- `/force_set_stat [ID]` - Changer le canal stats
+- `/force_set_display [ID]` - Changer le canal display
+- `/intervalle [min]` - Ajuster l'intervalle
 
 ---
 
@@ -86,6 +112,7 @@ ADMIN_ID = votre_telegram_user_id
 | Paramètre | Valeur |
 |-----------|--------|
 | **Port** | 10000 |
+| **Canal Stats** | -1002682552255 |
 | **Canal Display** | -1002999811353 |
 | **Intervalle** | 1 minute(s) |
 | **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳⏳ |
@@ -108,7 +135,7 @@ ADMIN_ID = votre_telegram_user_id
 ## 🎯 Support
 
 **Développé par:** Sossou Kouamé Appolinaire  
-**Version:** 2025-10-04 05:38  
+**Version:** 2025-10-04 06:25  
 **Plateforme:** Replit
 
-**🚀 Le bot est 100% prêt pour !**
+**🚀 Le bot est 100% prêt pour Replit!**
