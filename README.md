@@ -1,8 +1,8 @@
-# 📦 Bot Telegram - Package Replit Complet
+# 📦 Bot Telegram - Package  Complet
 
 ## 🎯 Package Prêt pour Déploiement
 
-Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur **Replit**.
+Ce package contient **TOUS** les fichiers nécessaires pour déployer le bot sur ***.
 
 ---
 
@@ -111,4 +111,4 @@ ADMIN_ID = votre_telegram_user_id
 **Version:** 2025-10-04 05:38  
 **Plateforme:** Replit
 
-**🚀 Le bot est 100% prêt pour Replit!**
+**🚀 Le bot est 100% prêt pour !**
