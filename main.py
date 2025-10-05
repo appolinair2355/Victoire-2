@@ -893,7 +893,12 @@ async def generate_deploy_package(event):
         await event.respond("🚀 **Génération du package Replit avec auto-configuration...**")
 
         try:
-            package_name = 'replit_deployment_complete.zip'
+            # Recharger la config actuelle depuis bot_config.json
+            load_config()
+            
+            # Nom du package personnalisé
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            package_name = 'deplo45.zip'
 
             with zipfile.ZipFile(package_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 # 1. Fichiers Python essentiels du projet
@@ -909,14 +914,14 @@ async def generate_deploy_package(event):
                         zipf.write(file_path)
                         print(f"  ✅ Ajouté: {file_path}")
 
-                # 2. Créer bot_config.json avec la configuration actuelle
+                # 2. Créer bot_config.json avec la configuration ACTUELLE
                 config_data = {
                     'stat_channel': detected_stat_channel,
                     'display_channel': detected_display_channel,
                     'prediction_interval': prediction_interval
                 }
                 zipf.writestr('bot_config.json', json.dumps(config_data, indent=2))
-                print("  ✅ Créé: bot_config.json avec configuration actuelle")
+                print(f"  ✅ Créé: bot_config.json (Stats: {detected_stat_channel}, Display: {detected_display_channel})")
 
                 # 3. Créer .replit (configuration Replit)
                 replit_content = f"""run = "python main.py"
@@ -1166,16 +1171,18 @@ Si vous voulez changer les canaux après déploiement:
 
             file_size = os.path.getsize(package_name) / 1024
 
-            # Lire depuis bot_config.json pour garantir les bonnes valeurs
-            config_stats = detected_stat_channel or "Non configuré"
-            config_display = detected_display_channel or "Non configuré"
+            # Utiliser les valeurs actuelles
+            canal_stats_info = f"• Canal Stats: {detected_stat_channel} ✅" if detected_stat_channel else "• Canal Stats: À configurer ⚠️"
+            canal_display_info = f"• Canal Display: {detected_display_channel} ✅" if detected_display_channel else "• Canal Display: À configurer ⚠️"
 
-            canal_stats_info = f"• Canal Stats: {config_stats} ✅" if detected_stat_channel else "• Canal Stats: À configurer ⚠️"
-            canal_display_info = f"• Canal Display: {config_display} ✅" if detected_display_channel else "• Canal Display: À configurer ⚠️"
-
-            await event.respond(f"""✅ **PACKAGE REPLIT AVEC AUTO-CONFIG CRÉÉ!**
+            await event.respond(f"""✅ **PACKAGE DEPLO45 CRÉÉ AVEC SUCCÈS!**
 
 📦 **Fichier:** {package_name} ({file_size:.1f} KB)
+🕐 **Généré:** {timestamp}
+
+**Différence avec l'ancien package:**
+• Ancien: replit_deploy_*.zip (27.7 KB) - configuration obsolète
+• Nouveau: {package_name} ({file_size:.1f} KB) - configuration actuelle corrigée
 
 📋 **Contenu (11 fichiers):**
 ✅ Code source complet (4 fichiers Python)
@@ -1210,13 +1217,18 @@ Le bot utilise `bot_config.json` au démarrage - **aucune configuration manuelle
 
 📖 **Guide complet dans README.md**
 
+📊 **Comparaison des packages:**
+• Ancien package: 27.7 KB (config obsolète)
+• Nouveau deplo45.zip: {file_size:.1f} KB (config corrigée)
+• Différence: +{file_size - 27.7:.1f} KB
+
 Le package est 100% prêt avec auto-configuration! 🎉""")
 
             # Envoyer le fichier
             await client.send_file(
                 event.chat_id,
                 package_name,
-                caption=f"📦 **Package Replit Complet v{datetime.now().strftime('%Y%m%d')}** - Prêt pour déploiement!"
+                caption=f"📦 **Package DEPLO45 - Config Corrigée** | Stats: {detected_stat_channel} | Display: {detected_display_channel} | Taille: {file_size:.1f} KB"
             )
 
             print(f"✅ Package créé: {package_name} ({file_size:.1f} KB)")

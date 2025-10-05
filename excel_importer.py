@@ -172,23 +172,26 @@ class ExcelPredictionManager:
             matches = re.findall(pattern, message_text)
             
             if len(matches) >= 2:
-                # Déterminer qui a quel point selon la position du ✅
+                # Le premier groupe (avant le tiret) est TOUJOURS le joueur
+                # Le second groupe (après le tiret) est TOUJOURS le banquier
+                joueur_point = int(matches[0])
+                banquier_point = int(matches[1])
+                
+                # Validation STRICTE: vérifier que le ✅ correspond bien au gagnant
                 parts = message_text.split('-') if '-' in message_text else message_text.split('🔰')
                 
-                if '✅' in parts[0]:
-                    # ✅ est avant le tiret → joueur a gagné
-                    joueur_point = int(matches[0])
-                    banquier_point = int(matches[1])
-                elif '✅' in parts[1] if len(parts) > 1 else False:
-                    # ✅ est après le tiret → banquier a gagné
-                    joueur_point = int(matches[0])
-                    banquier_point = int(matches[1])
-                elif '🔰' in message_text:
-                    # Match nul
-                    joueur_point = int(matches[0])
-                    banquier_point = int(matches[1])
-                else:
-                    return None, None
+                if '✅' in message_text and not '🔰' in message_text:
+                    # Vérifier la cohérence entre ✅ et les points
+                    if '✅' in parts[0]:
+                        # ✅ avant le tiret → joueur DOIT avoir gagné
+                        if joueur_point <= banquier_point:
+                            print(f"❌ Incohérence CRITIQUE: ✅ sur joueur mais points joueur ({joueur_point}) <= banquier ({banquier_point}) - REJET")
+                            return None, None
+                    elif len(parts) > 1 and '✅' in parts[1]:
+                        # ✅ après le tiret → banquier DOIT avoir gagné
+                        if banquier_point <= joueur_point:
+                            print(f"❌ Incohérence CRITIQUE: ✅ sur banquier mais points banquier ({banquier_point}) <= joueur ({joueur_point}) - REJET")
+                            return None, None
                 
                 return joueur_point, banquier_point
             
@@ -214,10 +217,24 @@ class ExcelPredictionManager:
                 - should_continue: True si on doit continuer à vérifier, False si terminé
         """
         try:
-            # Si on a dépassé offset 2, c'est un échec définitif
-            if current_offset > 2:
-                print(f"❌ Prédiction Excel #{predicted_numero}: échec après offset 2")
+            # VALIDATION: Calculer l'offset réel depuis le numéro de jeu
+            real_offset_from_game = game_number - predicted_numero
+            
+            # Si le jeu est avant la prédiction, continuer à attendre (ne pas arrêter)
+            if real_offset_from_game < 0:
+                print(f"⏭️ Jeu #{game_number} est AVANT la prédiction #{predicted_numero} - on continue d'attendre")
+                return None, True
+            
+            # Si l'offset est trop grand, c'est un échec définitif
+            if real_offset_from_game > 2:
+                print(f"❌ Prédiction Excel #{predicted_numero}: offset {real_offset_from_game} > 2, échec définitif")
                 return '⭕✍🏻', False
+            
+            # Vérifier que l'offset passé correspond à l'offset réel
+            if current_offset != real_offset_from_game:
+                print(f"⚠️ Incohérence offset: current_offset={current_offset}, real={real_offset_from_game}")
+                # Utiliser l'offset réel calculé
+                current_offset = real_offset_from_game
             
             # Vérifier si ce message correspond à l'offset actuel
             target_number = predicted_numero + current_offset
@@ -238,8 +255,14 @@ class ExcelPredictionManager:
             joueur_point, banquier_point = self._extract_points(message_text)
             
             if joueur_point is None or banquier_point is None:
-                print(f"⚠️ Impossible d'extraire les points, on continue")
-                return None, True
+                # Si c'est une incohérence critique (✅ mal placé), marquer comme échec
+                if '✅' in message_text and not '🔰' in message_text:
+                    print(f"❌ CRITIQUE: Message avec ✅ incohérent - échec de la prédiction #{predicted_numero}")
+                    return '⭕✍🏻', False
+                else:
+                    # Sinon, continuer à attendre (peut-être un message incomplet)
+                    print(f"⚠️ Impossible d'extraire les points, on continue")
+                    return None, True
 
             # Déterminer le gagnant réel selon les points
             if joueur_point > banquier_point:
@@ -260,17 +283,13 @@ class ExcelPredictionManager:
                 print(f"❌ Offset {current_offset}: gagnant incorrect - passage à offset suivant")
                 return None, True
 
-            # ✅ SUCCÈS ! Calculer le vrai offset
-            real_offset = 0
-            for key, pred in sorted(self.predictions.items(), key=lambda x: x[1]["numero"]):
-                pred_num = pred["numero"]
-                if predicted_numero < pred_num <= game_number:
-                    if not pred.get("skipped_consecutive", False):
-                        real_offset += 1
+            # ✅ SUCCÈS ! L'offset est simplement la différence entre le jeu actuel et le jeu prédit
+            real_offset = game_number - predicted_numero
             
-            real_offset = max(0, real_offset - 1)
-            
-            print(f"✅ Prédiction Excel #{predicted_numero} réussie - Offset réel: {real_offset} (J:{joueur_point} > B:{banquier_point})")
+            print(f"✅ Prédiction Excel #{predicted_numero} réussie sur jeu #{game_number}")
+            print(f"   Points: Joueur={joueur_point}, Banquier={banquier_point}")
+            print(f"   Gagnant réel: {actual_winner}, Attendu: {expected}")
+            print(f"   Offset: {real_offset}")
             
             if real_offset == 0:
                 return '✅0️⃣', False
@@ -279,6 +298,7 @@ class ExcelPredictionManager:
             elif real_offset == 2:
                 return '✅2️⃣', False
             else:
+                # Si offset > 2, on ne devrait pas arriver ici, mais par sécurité
                 return '✅2️⃣', False
 
         except Exception as e:
