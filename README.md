@@ -86,14 +86,14 @@ Si vous voulez changer les canaux après déploiement:
 ### 📋 Format des Messages de Prédiction
 
 **Au lancement:**
-- Victoire Joueur: `🔵XXX 🔵V1✍🏻: statut :⏳⏳`
-- Victoire Banquier: `🔵XXX 🔵V2✍🏻: statut :⏳⏳`
+- Victoire Joueur: `🔵XXX 👗𝐕1👗: statut :⏳`
+- Victoire Banquier: `🔵XXX 👗𝐕2👗: statut :⏳`
 
 **Après vérification:**
-- Exact (offset 0): `🔵XXX 🔵V1✍🏻: statut :✅0️⃣`
-- Offset +1: `🔵XXX 🔵V1✍🏻: statut :✅1️⃣`
-- Offset +2: `🔵XXX 🔵V1✍🏻: statut :✅2️⃣`
-- Échec: `🔵XXX 🔵V1✍🏻: statut :⭕✍🏻`
+- Exact (offset 0): `🔵XXX 👗𝐕1👗: statut :✅0️⃣`
+- Offset +1: `🔵XXX 👗𝐕1👗: statut :✅1️⃣`
+- Offset +2: `🔵XXX 👗𝐕1👗: statut :✅2️⃣`
+- Échec: `🔵XXX 👗𝐕1👗: statut :⭕✍🏻`
 
 ### ✅ Commandes Admin
 - `/start` - Aide et bienvenue
@@ -115,8 +115,8 @@ Si vous voulez changer les canaux après déploiement:
 | **Canal Stats** | -1002682552255 |
 | **Canal Display** | -1002999811353 |
 | **Intervalle** | 1 minute(s) |
-| **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳⏳ |
-| **Format V2** | 🔵XXX 🔵V2✍🏻: statut :⏳⏳ |
+| **Format V1** | 🔵XXX 👗𝐕1👗: statut :⏳ |
+| **Format V2** | 🔵XXX 👗𝐕2👗: statut :⏳ |
 
 ---
 
@@ -135,7 +135,7 @@ Si vous voulez changer les canaux après déploiement:
 ## 🎯 Support
 
 **Développé par:** Sossou Kouamé Appolinaire  
-**Version:** 2025-10-04 06:25  
+**Version:** 2025-10-05 04:24  
 **Plateforme:** Replit
 
 **🚀 Le bot est 100% prêt pour Replit!**

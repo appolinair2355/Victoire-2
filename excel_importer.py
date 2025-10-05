@@ -46,10 +46,13 @@ class ExcelPredictionManager:
                     skipped_count += 1
                     continue
 
-                # Vérifier si consécutif au précédent (ignorer si numéro actuel = précédent + 1)
+                # FILTRE CONSÉCUTIFS: Vérifier si numéro actuel = précédent + 1
+                # Ex: Si on a 56, on ignore 57, mais on garde 59
                 if last_numero is not None and numero_int == last_numero + 1:
                     consecutive_skipped += 1
-                    print(f"⚠️ Numéro {numero_int} ignoré à l'import (consécutif à {last_numero})")
+                    print(f"⚠️ Numéro {numero_int} IGNORÉ À L'IMPORT (consécutif à {last_numero})")
+                    # NE PAS mémoriser ce numéro comme last_numero
+                    # On continue avec l'ancien last_numero pour détecter le prochain consécutif
                     continue
 
                 predictions[prediction_key] = {
@@ -62,7 +65,7 @@ class ExcelPredictionManager:
                     "imported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 imported_count += 1
-                last_numero = numero_int  # Mémoriser le dernier numéro valide
+                last_numero = numero_int  # Mémoriser UNIQUEMENT les numéros NON consécutifs
 
             self.predictions.update(predictions)
             self.save_predictions()
@@ -88,6 +91,10 @@ class ExcelPredictionManager:
             print(f"✅ Prédictions Excel sauvegardées: {len(self.predictions)} entrées")
         except Exception as e:
             print(f"❌ Erreur sauvegarde prédictions: {e}")
+    
+    def _save_predictions(self):
+        """Alias pour compatibilité avec main.py"""
+        self.save_predictions()
 
     def load_predictions(self):
         try:
@@ -107,6 +114,7 @@ class ExcelPredictionManager:
         Trouve une prédiction à lancer quand le canal source affiche un numéro proche AVANT le numéro cible.
         Exemple: Excel #881, Canal source #879 → Lance #881 (diff = +2)
         Tolérance: 0 à 4 parties d'écart
+        IMPORTANT: Ignore les numéros consécutifs (ex: 56→57 ignoré, on passe directement à 59)
         """
         try:
             closest_pred = None
@@ -123,9 +131,13 @@ class ExcelPredictionManager:
 
                 # Vérifier si le canal source est entre 0 et 4 parties AVANT le numéro cible
                 if 0 <= diff <= tolerance:
-                    # Vérifier si ce n'est pas un numéro consécutif du dernier prédit
-                    if self.last_launched_numero and abs(pred_numero - self.last_launched_numero) == 1:
-                        print(f"⚠️ Numéro {pred_numero} ignoré (consécutif à {self.last_launched_numero})")
+                    # FILTRE PRINCIPAL: Vérifier si ce n'est pas un numéro consécutif du dernier prédit
+                    if self.last_launched_numero and pred_numero == self.last_launched_numero + 1:
+                        print(f"⚠️ Numéro {pred_numero} IGNORÉ AU LANCEMENT (consécutif à {self.last_launched_numero})")
+                        # Marquer comme lancé pour éviter de le relancer plus tard
+                        pred["launched"] = True
+                        pred["skipped_consecutive"] = True
+                        self.save_predictions()
                         continue
 
                     # Garder la prédiction la plus proche (priorité au plus petit écart)
@@ -145,72 +157,143 @@ class ExcelPredictionManager:
             self.predictions[key]["launched"] = True
             self.predictions[key]["message_id"] = message_id
             self.predictions[key]["channel_id"] = channel_id
+            self.predictions[key]["current_offset"] = 0  # Commence avec offset 0
             self.last_launched_numero = self.predictions[key]["numero"]
             self.save_predictions()
 
-    def verify_excel_prediction(self, game_number: int, message_text: str, predicted_numero: int, expected_winner: str):
-        """Vérifie une prédiction Excel avec offsets 0, 1, 2"""
+    def _extract_points(self, message_text: str):
+        """Extrait les points du joueur et du banquier depuis le message de résultat"""
         try:
+            # Format: #N249. ✅8(6♦️2♠️) - 1(5♦️6♦️) ou #N253. 2(2♣️J♥️) - ✅9(3♣️6♦️)
+            # Match nul: #N252. 7(3♠️4♣️) 🔰 7(A♦️6♦️)
+            
+            # Pattern pour extraire les points
+            pattern = r'(\d+)\([^)]+\)'
+            matches = re.findall(pattern, message_text)
+            
+            if len(matches) >= 2:
+                # Déterminer qui a quel point selon la position du ✅
+                parts = message_text.split('-') if '-' in message_text else message_text.split('🔰')
+                
+                if '✅' in parts[0]:
+                    # ✅ est avant le tiret → joueur a gagné
+                    joueur_point = int(matches[0])
+                    banquier_point = int(matches[1])
+                elif '✅' in parts[1] if len(parts) > 1 else False:
+                    # ✅ est après le tiret → banquier a gagné
+                    joueur_point = int(matches[0])
+                    banquier_point = int(matches[1])
+                elif '🔰' in message_text:
+                    # Match nul
+                    joueur_point = int(matches[0])
+                    banquier_point = int(matches[1])
+                else:
+                    return None, None
+                
+                return joueur_point, banquier_point
+            
+            return None, None
+        except Exception as e:
+            print(f"Erreur extraction points: {e}")
+            return None, None
+
+    def verify_excel_prediction(self, game_number: int, message_text: str, predicted_numero: int, expected_winner: str, current_offset: int):
+        """
+        Vérifie une prédiction Excel avec calcul des points pour déterminer le gagnant.
+        
+        Args:
+            game_number: Numéro du jeu actuel
+            message_text: Texte du message de résultat
+            predicted_numero: Numéro prédit
+            expected_winner: Gagnant attendu (joueur/banquier)
+            current_offset: Offset interne de vérification (0, 1, 2)
+            
+        Returns:
+            tuple: (status, should_continue)
+                - status: '✅0️⃣', '✅1️⃣', '✅2️⃣', '⭕✍🏻', ou None
+                - should_continue: True si on doit continuer à vérifier, False si terminé
+        """
+        try:
+            # Si on a dépassé offset 2, c'est un échec définitif
+            if current_offset > 2:
+                print(f"❌ Prédiction Excel #{predicted_numero}: échec après offset 2")
+                return '⭕✍🏻', False
+            
+            # Vérifier si ce message correspond à l'offset actuel
+            target_number = predicted_numero + current_offset
+            
+            if game_number != target_number:
+                # Ce n'est pas encore notre numéro cible, continuer à attendre
+                return None, True
+            
+            # C'est notre numéro cible, vérifier le résultat
+            print(f"🔍 Vérification Excel #{predicted_numero} sur offset interne {current_offset} (numéro {game_number})")
+            
             # Vérifier si le message contient un résultat valide
             if not any(tag in message_text for tag in ["✅", "🔰"]):
-                return None
+                print(f"⚠️ Message sans tag de résultat, on continue")
+                return None, True
 
-            # Extraire les groupes de cartes
-            groups = re.findall(r"\(([^)]*)\)", message_text)
-            if len(groups) < 2:
-                return None
+            # Extraire les points
+            joueur_point, banquier_point = self._extract_points(message_text)
+            
+            if joueur_point is None or banquier_point is None:
+                print(f"⚠️ Impossible d'extraire les points, on continue")
+                return None, True
 
-            # Vérifier 2+2 cartes
-            first_count = message_text.count('♠') + message_text.count('♥') + message_text.count('♦') + message_text.count('♣')
-            if first_count != 4:
-                return None
-
-            # Déterminer le gagnant réel
-            actual_winner = None
-            if "🔰" in message_text:
-                actual_winner = "banquier"
-            elif "✅" in message_text:
+            # Déterminer le gagnant réel selon les points
+            if joueur_point > banquier_point:
                 actual_winner = "joueur"
-
-            if not actual_winner:
-                return None
+            elif banquier_point > joueur_point:
+                actual_winner = "banquier"
+            else:
+                # Match nul - traiter comme échec pour les prédictions
+                print(f"⚠️ Match nul détecté (J:{joueur_point} = B:{banquier_point}), passage à offset suivant")
+                return None, True
 
             # Comparer avec le gagnant attendu
             expected = "banquier" if "banquier" in expected_winner.lower() else "joueur"
 
+            print(f"📊 Points: Joueur={joueur_point}, Banquier={banquier_point} → Gagnant réel: {actual_winner}, Attendu: {expected}")
+
             if actual_winner != expected:
-                print(f"❌ Prédiction Excel #{predicted_numero}: gagnant incorrect (attendu {expected}, obtenu {actual_winner})")
-                return None
+                print(f"❌ Offset {current_offset}: gagnant incorrect - passage à offset suivant")
+                return None, True
 
-            # Vérifier les offsets (0, 1, 2 uniquement)
-            for offset in range(3):  # 0, 1, 2
-                if game_number == predicted_numero + offset:
-                    if offset == 0:
-                        return '✅0️⃣'
-                    elif offset == 1:
-                        return '✅1️⃣'
-                    else:  # offset == 2
-                        return '✅2️⃣'
-
-            # Si dépassé prédit+2, c'est un échec
-            if game_number > predicted_numero + 2:
-                return '⭕✍🏻'
-
-            return None
+            # ✅ SUCCÈS ! Calculer le vrai offset
+            real_offset = 0
+            for key, pred in sorted(self.predictions.items(), key=lambda x: x[1]["numero"]):
+                pred_num = pred["numero"]
+                if predicted_numero < pred_num <= game_number:
+                    if not pred.get("skipped_consecutive", False):
+                        real_offset += 1
+            
+            real_offset = max(0, real_offset - 1)
+            
+            print(f"✅ Prédiction Excel #{predicted_numero} réussie - Offset réel: {real_offset} (J:{joueur_point} > B:{banquier_point})")
+            
+            if real_offset == 0:
+                return '✅0️⃣', False
+            elif real_offset == 1:
+                return '✅1️⃣', False
+            elif real_offset == 2:
+                return '✅2️⃣', False
+            else:
+                return '✅2️⃣', False
 
         except Exception as e:
             print(f"Erreur verify_excel_prediction: {e}")
-            return None
+            return None, True
 
     def get_prediction_format(self, victoire: str) -> str:
         victoire_lower = victoire.lower()
 
         if "joueur" in victoire_lower or "player" in victoire_lower:
-            return "V1"
+            return "👗 𝐕𝟏👗"
         elif "banquier" in victoire_lower or "banker" in victoire_lower:
-            return "V2"
+            return "👗 𝐕2👗"
         else:
-            return "V1"
+            return "👗 𝐕𝟏👗"
 
     def get_pending_predictions(self) -> List[Dict[str, Any]]:
         pending = []

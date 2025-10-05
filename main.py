@@ -356,6 +356,68 @@ async def force_set_display_channel(event):
         print(f"Erreur dans force_set_display_channel: {e}")
         await event.respond(f"❌ Erreur: {e}")
 
+
+async def verify_excel_predictions(game_number: int, message_text: str):
+    """Fonction consolidée pour vérifier toutes les prédictions Excel en attente"""
+    for key, pred in list(excel_manager.predictions.items()):
+        # Ignorer si pas lancée ou déjà vérifiée
+        if not pred["launched"] or pred.get("verified", False):
+            continue
+
+        pred_numero = pred["numero"]
+        expected_winner = pred["victoire"]
+        current_offset = pred.get("current_offset", 0)
+        target_number = pred_numero + current_offset
+
+        # DÉTECTION DE SAUT DE NUMÉRO
+        if game_number > target_number:
+            print(f"⚠️ Numéro sauté: #{pred_numero} attendait #{target_number}, reçu #{game_number}")
+
+            while current_offset <= 2 and game_number > pred_numero + current_offset:
+                current_offset += 1
+                print(f"⏭️ Prédiction #{pred_numero}: saut à offset {current_offset}")
+
+            if current_offset > 2:
+                await update_prediction_status(pred, pred_numero, expected_winner, "⭕✍🏻", True)
+                continue
+            else:
+                pred["current_offset"] = current_offset
+                excel_manager.save_predictions()
+
+        # Vérification séquentielle
+        status, should_continue = excel_manager.verify_excel_prediction(
+            game_number, message_text, pred_numero, expected_winner, current_offset
+        )
+
+        if status:
+            await update_prediction_status(pred, pred_numero, expected_winner, status, True)
+        elif should_continue and game_number == pred_numero + current_offset:
+            new_offset = current_offset + 1
+            if new_offset <= 2:
+                pred["current_offset"] = new_offset
+                excel_manager.save_predictions()
+                print(f"⏭️ Prédiction #{pred_numero}: offset {new_offset}")
+            else:
+                await update_prediction_status(pred, pred_numero, expected_winner, "⭕✍🏻", True)
+
+async def update_prediction_status(pred: dict, numero: int, winner: str, status: str, verified: bool):
+    """Mise à jour unifiée du statut de prédiction"""
+    msg_id = pred.get("message_id")
+    channel_id = pred.get("channel_id")
+
+    if msg_id and channel_id:
+        v_format = excel_manager.get_prediction_format(winner)
+        new_text = f"🔵{numero} {v_format}statut :{status}"
+
+        try:
+            await client.edit_message(channel_id, msg_id, new_text)
+            pred["verified"] = verified
+            excel_manager.save_predictions()
+            print(f"✅ Prédiction #{numero} mise à jour: {status}")
+        except Exception as e:
+            print(f"❌ Erreur mise à jour #{numero}: {e}")
+
+
 # --- COMMANDES DE BASE ---
 @client.on(events.NewMessage(pattern='/start'))
 async def start_command(event):
@@ -392,8 +454,8 @@ Le fichier doit contenir 3 colonnes :
 • Victoire (Joueur ou Banquier)
 
 **Format de prédiction** :
-• V1 pour victoire Joueur : 🔵XXX 🔵V1✍🏻: statut :⏳
-• V2 pour victoire Banquier : 🔵XXX 🔵V2✍🏻: statut :⏳
+• V1 pour victoire Joueur : 🔵XXX 👗𝐕1👗: statut :⏳
+• V2 pour victoire Banquier : 🔵XXX 👗𝐕2👗: statut :⏳
 
 Le bot est prêt à analyser vos jeux ! 🚀"""
 
@@ -485,7 +547,7 @@ async def ni_command(event):
 🎮 **Fonctionnalités**:
 • Prédictions basées uniquement sur fichier Excel
 • Vérification séquentielle avec offsets 0→1→2
-• Format: "🔵XXX 🔵V1✍🏻: statut :⏳" ou "🔵XXX 🔵V2✍🏻: statut :⏳"
+• Format: "🔵XXX 👗𝐕1👗: statut :⏳" ou "🔵XXX 👗𝐕2👗: statut :⏳"
 
 🔧 **Commandes disponibles**:
 • `/set_stat [ID]` - Configurer canal source
@@ -553,8 +615,8 @@ async def show_excel_stats(event):
 • Canal affichage configuré: {'✅' if detected_display_channel else '❌'} ({detected_display_channel or 'Aucun'})
 
 🔧 **Format de prédiction**:
-• V1 (Joueur) : 🔵XXX 🔵V1✍🏻: statut :⏳
-• V2 (Banquier) : 🔵XXX 🔵V2✍🏻: statut :⏳
+• V1 (Joueur) : 🔵XXX 👗𝐕1👗: statut :⏳
+• V2 (Banquier) : 🔵XXX 👗𝐕2👗: statut :⏳
 
 ✅ Prédictions uniquement depuis fichier Excel"""
 
@@ -875,7 +937,7 @@ PREDICTION_INTERVAL = "{prediction_interval}"
 """
                 zipf.writestr('.replit', replit_content)
                 print("  ✅ Créé: .replit")
-                
+
                 # 3. Créer replit.nix
                 nix_content = """{ pkgs }: {
   deps = [
@@ -1036,14 +1098,14 @@ Si vous voulez changer les canaux après déploiement:
 ### 📋 Format des Messages de Prédiction
 
 **Au lancement:**
-- Victoire Joueur: `🔵XXX 🔵V1✍🏻: statut :⏳⏳`
-- Victoire Banquier: `🔵XXX 🔵V2✍🏻: statut :⏳⏳`
+- Victoire Joueur: `🔵XXX 👗𝐕1👗: statut :⏳`
+- Victoire Banquier: `🔵XXX 👗𝐕2👗: statut :⏳`
 
 **Après vérification:**
-- Exact (offset 0): `🔵XXX 🔵V1✍🏻: statut :✅0️⃣`
-- Offset +1: `🔵XXX 🔵V1✍🏻: statut :✅1️⃣`
-- Offset +2: `🔵XXX 🔵V1✍🏻: statut :✅2️⃣`
-- Échec: `🔵XXX 🔵V1✍🏻: statut :⭕✍🏻`
+- Exact (offset 0): `🔵XXX 👗𝐕1👗: statut :✅0️⃣`
+- Offset +1: `🔵XXX 👗𝐕1👗: statut :✅1️⃣`
+- Offset +2: `🔵XXX 👗𝐕1👗: statut :✅2️⃣`
+- Échec: `🔵XXX 👗𝐕1👗: statut :⭕✍🏻`
 
 ### ✅ Commandes Admin
 - `/start` - Aide et bienvenue
@@ -1065,8 +1127,8 @@ Si vous voulez changer les canaux après déploiement:
 | **Canal Stats** | {config_data['stat_channel']} |
 | **Canal Display** | {config_data['display_channel']} |
 | **Intervalle** | {config_data['prediction_interval']} minute(s) |
-| **Format V1** | 🔵XXX 🔵V1✍🏻: statut :⏳⏳ |
-| **Format V2** | 🔵XXX 🔵V2✍🏻: statut :⏳⏳ |
+| **Format V1** | 🔵XXX 👗𝐕1👗: statut :⏳ |
+| **Format V2** | 🔵XXX 👗𝐕2👗: statut :⏳ |
 
 ---
 
@@ -1107,7 +1169,7 @@ Si vous voulez changer les canaux après déploiement:
             # Lire depuis bot_config.json pour garantir les bonnes valeurs
             config_stats = detected_stat_channel or "Non configuré"
             config_display = detected_display_channel or "Non configuré"
-            
+
             canal_stats_info = f"• Canal Stats: {config_stats} ✅" if detected_stat_channel else "• Canal Stats: À configurer ⚠️"
             canal_display_info = f"• Canal Display: {config_display} ✅" if detected_display_channel else "• Canal Display: À configurer ⚠️"
 
@@ -1135,11 +1197,11 @@ Si vous voulez changer les canaux après déploiement:
 Le bot utilise `bot_config.json` au démarrage - **aucune configuration manuelle requise** après l'ajout aux canaux!
 
 📋 **Format des messages de prédiction:**
-• Lancement: 🔵XXX 🔵V1✍🏻: statut :⏳⏳
-• Succès exact: 🔵XXX 🔵V1✍🏻: statut :✅0️⃣
-• Succès +1: 🔵XXX 🔵V1✍🏻: statut :✅1️⃣
-• Succès +2: 🔵XXX 🔵V1✍🏻: statut :✅2️⃣
-• Échec: 🔵XXX 🔵V1✍🏻: statut :⭕✍🏻
+• Lancement: 🔵XXX 👗𝐕1👗: statut :⏳
+• Succès exact: 🔵XXX 👗𝐕1👗: statut :✅0️⃣
+• Succès +1: 🔵XXX 👗𝐕1👗: statut :✅1️⃣
+• Succès +2: 🔵XXX 👗𝐕1👗: statut :✅2️⃣
+• Échec: 🔵XXX 👗𝐕1👗: statut :⭕✍🏻
 
 🚀 **3 étapes pour déployer:**
 1. Créer un nouveau Repl Python sur Replit
@@ -1244,47 +1306,19 @@ Le système surveillera maintenant le canal source et lancera les prédictions a
                 victoire_type = pred_data["victoire"]
 
                 v_format = excel_manager.get_prediction_format(victoire_type)
-                prediction_text = f"🔵{pred_numero} {v_format}✍🏻: statut :⏳⏳"
+                prediction_text = f"🔵{pred_numero} {v_format}: statut :⏳"
 
                 try:
                     sent_message = await client.send_message(detected_display_channel, prediction_text)
                     excel_manager.mark_as_launched(pred_key, sent_message.id, detected_display_channel)
-
-                    # Enregistrer la prédiction dans le predictor pour la vérification
-                    predictor.prediction_status[pred_numero] = '⌛'
-                    predictor.store_prediction_message(pred_numero, sent_message.id, detected_display_channel)
 
                     ecart = pred_numero - game_number
                     print(f"✅ Prédiction Excel lancée: 🔵{pred_numero} {v_format} | Canal source: #{game_number} (écart: +{ecart} parties)")
                 except Exception as e:
                     print(f"❌ Erreur envoi prédiction Excel: {e}")
 
-            # Vérification des prédictions Excel lancées (avec offset 0, 1, 2)
-            for key, pred in list(excel_manager.predictions.items()):
-                if not pred["launched"] or "verified" in pred:
-                    continue
-
-                pred_numero = pred["numero"]
-                expected_winner = pred["victoire"]
-
-                status = excel_manager.verify_excel_prediction(game_number, message_text, pred_numero, expected_winner)
-
-                if status:
-                    # Mettre à jour le message de prédiction
-                    msg_id = pred.get("message_id")
-                    channel_id = pred.get("channel_id")
-
-                    if msg_id and channel_id:
-                        v_format = excel_manager.get_prediction_format(expected_winner)
-                        new_text = f"🔵{pred_numero} {v_format}✍🏻: statut :{status}"
-
-                        try:
-                            await client.edit_message(channel_id, msg_id, new_text)
-                            pred["verified"] = True
-                            excel_manager._save_predictions()
-                            print(f"✅ Prédiction Excel #{pred_numero} mise à jour: {status}")
-                        except Exception as e:
-                            print(f"❌ Erreur mise à jour prédiction Excel: {e}")
+            # Vérification SÉQUENTIELLE des prédictions Excel lancées
+            await verify_excel_predictions(game_number, message_text)
 
         # Check for prediction verification
         verified, number = predictor.verify_prediction(message_text)
@@ -1344,8 +1378,8 @@ async def edit_prediction_message(game_number: int, new_status: str):
         if message_info:
             chat_id = message_info['chat_id']
             message_id = message_info['message_id']
+            # Update format to use 👗
             new_text = f"🔵{game_number} statut :{new_status}"
-
             await client.edit_message(chat_id, message_id, new_text)
             print(f"Message de prédiction #{game_number} mis à jour avec statut: {new_status}")
             return True
