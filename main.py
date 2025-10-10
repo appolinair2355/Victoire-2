@@ -24,7 +24,7 @@ try:
     API_HASH = os.getenv('API_HASH') or ''
     BOT_TOKEN = os.getenv('BOT_TOKEN') or ''
     ADMIN_ID = int(os.getenv('ADMIN_ID') or '0') if os.getenv('ADMIN_ID') else None
-    PORT = int(os.getenv('PORT') or '10000')
+    PORT = int(os.getenv('PORT') or '5000')
     DISPLAY_CHANNEL = int(os.getenv('DISPLAY_CHANNEL') or '-1002999811353')
 
     # Validation des variables requises
@@ -896,9 +896,9 @@ async def generate_deploy_package(event):
             # Recharger la config actuelle depuis bot_config.json
             load_config()
             
-            # Nom du package personnalisé
+            # Nom du package avec horodatage unique
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            package_name = 'deplo45.zip'
+            package_name = f'deploy_render_{timestamp}.zip'
 
             with zipfile.ZipFile(package_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 # 1. Fichiers Python essentiels du projet
@@ -1164,29 +1164,84 @@ Si vous voulez changer les canaux après déploiement:
                 zipf.writestr('data/.gitkeep', '# Dossier pour fichiers YAML\n# Créé automatiquement par le bot\n')
                 print("  ✅ Créé: data/.gitkeep")
 
-                # 10. Procfile (optionnel, pour compatibilité Heroku)
+                # 10. Créer render_main.py optimisé pour Render.com
+                render_main_content = f'''#!/usr/bin/env python3
+"""
+Bot Telegram - Version Render.com
+Port: 10000 (configuré automatiquement)
+Auto-configuration des canaux depuis bot_config.json
+"""
+import os
+import sys
+
+# Forcer le port 10000 pour Render.com
+os.environ['PORT'] = '10000'
+
+# Charger les variables depuis Render (si définies)
+if not os.getenv('API_ID'):
+    print("⚠️ Variables d'environnement manquantes sur Render!")
+    print("Configurez: API_ID, API_HASH, BOT_TOKEN, ADMIN_ID")
+    sys.exit(1)
+
+# Lancer le bot principal
+print("🚀 Démarrage sur Render.com (Port 10000)...")
+from main import main
+import asyncio
+
+if __name__ == "__main__":
+    asyncio.run(main())
+'''
+                zipf.writestr('render_main.py', render_main_content)
+                print("  ✅ Créé: render_main.py (Port 10000)")
+
+                # 11. Procfile pour Render.com
                 procfile_content = "web: python render_main.py"
                 zipf.writestr('Procfile', procfile_content)
                 print("  ✅ Créé: Procfile")
+                
+                # 12. render.yaml pour déploiement automatique
+                render_yaml_content = f'''services:
+  - type: web
+    name: telegram-bot-baccarat
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python render_main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.0
+'''
+                zipf.writestr('render.yaml', render_yaml_content)
+                print("  ✅ Créé: render.yaml")
 
             file_size = os.path.getsize(package_name) / 1024
 
-            # Utiliser les valeurs actuelles
-            canal_stats_info = f"• Canal Stats: {detected_stat_channel} ✅" if detected_stat_channel else "• Canal Stats: À configurer ⚠️"
-            canal_display_info = f"• Canal Display: {detected_display_channel} ✅" if detected_display_channel else "• Canal Display: À configurer ⚠️"
+            # Recharger les valeurs depuis config_data pour garantir l'exactitude
+            config_stats = config_data.get('stat_channel', 'Non configuré')
+            config_display = config_data.get('display_channel', 'Non configuré')
+            config_interval = config_data.get('prediction_interval', 1)
+            
+            canal_stats_info = f"• Canal Stats: {config_stats} ✅" if config_stats and config_stats != 'Non configuré' else "• Canal Stats: À configurer ⚠️"
+            canal_display_info = f"• Canal Display: {config_display} ✅" if config_display and config_display != 'Non configuré' else "• Canal Display: À configurer ⚠️"
 
-            await event.respond(f"""✅ **PACKAGE DEPLO45 CRÉÉ AVEC SUCCÈS!**
+            await event.respond(f"""✅ **PACKAGE RENDER.COM CRÉÉ AVEC SUCCÈS!**
 
 📦 **Fichier:** {package_name} ({file_size:.1f} KB)
 🕐 **Généré:** {timestamp}
 
-**Différence avec l'ancien package:**
-• Ancien: replit_deploy_*.zip (27.7 KB) - configuration obsolète
-• Nouveau: {package_name} ({file_size:.1f} KB) - configuration actuelle corrigée
+**Package optimisé pour Render.com:**
+• Nom unique: deploy_render_{timestamp}.zip
+• Port configuré: 10000 ✅
+• render_main.py: Entry point optimisé
+• render.yaml: Configuration déploiement auto
 
-📋 **Contenu (11 fichiers):**
+📋 **Contenu (13 fichiers):**
 ✅ Code source complet (4 fichiers Python)
-✅ .replit + replit.nix - Config Replit
+✅ render_main.py - Entry point Render (Port 10000) 🆕
+✅ render.yaml - Config déploiement auto 🆕
+✅ Procfile - Commande de démarrage
 ✅ requirements.txt - Dépendances
 ✅ bot_config.json - **Configuration pré-enregistrée** 🆕
 ✅ .env.example - Template variables
@@ -1197,7 +1252,7 @@ Si vous voulez changer les canaux après déploiement:
 🔧 **Configuration Automatique:**
 {canal_stats_info}
 {canal_display_info}
-• Intervalle: {prediction_interval} minute(s) ✅
+• Intervalle: {config_interval} minute(s) ✅
 • Port: {PORT} ✅
 
 ✨ **Fonctionnement Immédiat:**
@@ -1224,11 +1279,11 @@ Le bot utilise `bot_config.json` au démarrage - **aucune configuration manuelle
 
 Le package est 100% prêt avec auto-configuration! 🎉""")
 
-            # Envoyer le fichier
+            # Envoyer le fichier avec les valeurs réelles du config_data
             await client.send_file(
                 event.chat_id,
                 package_name,
-                caption=f"📦 **Package DEPLO45 - Config Corrigée** | Stats: {detected_stat_channel} | Display: {detected_display_channel} | Taille: {file_size:.1f} KB"
+                caption=f"📦 **Render.com {timestamp}** | Port: 10000 | Stats: {config_stats} | Display: {config_display} | {file_size:.1f} KB"
             )
 
             print(f"✅ Package créé: {package_name} ({file_size:.1f} KB)")
@@ -1246,26 +1301,44 @@ Le package est 100% prêt avec auto-configuration! 🎉""")
 async def handle_messages(event):
     """Handle messages from statistics channel"""
     try:
-        # Handle Excel file import from admin (before any other checks)
-        if event.sender_id == ADMIN_ID and event.message.media and event.message.file:
+        # Handle Excel file import from admin or bot itself (security: prevent unauthorized imports)
+        me = await client.get_me()
+        me_id = getattr(me, 'id', None)
+        
+        if event.message.media and event.message.file:
             file_name = event.message.file.name
             if file_name and (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
+                # Allow only admin or bot itself to import Excel files
+                if event.sender_id != ADMIN_ID and event.sender_id != me_id:
+                    print(f"⚠️ Fichier Excel refusé de {event.sender_id} (ni admin ni bot)")
+                    return
                 await event.respond("📥 **Téléchargement du fichier Excel...**")
                 file_path = await event.message.download_media()
                 await event.respond("⚙️ **Importation des prédictions...**")
 
-                result = excel_manager.import_excel(file_path)
+                # MODE REMPLACEMENT AUTOMATIQUE : remplace toutes les anciennes prédictions
+                result = excel_manager.import_excel(file_path, replace_mode=True)
                 os.remove(file_path)
 
                 if result["success"]:
                     stats = excel_manager.get_stats()
                     consecutive_info = f"\n• Numéros consécutifs ignorés: {result.get('consecutive_skipped', 0)}" if result.get('consecutive_skipped', 0) > 0 else ""
+                    
+                    # Information sur le mode d'import
+                    mode_info = ""
+                    if result.get('mode') == 'remplacement':
+                        old_count = result.get('old_count', 0)
+                        if old_count > 0:
+                            mode_info = f"\n🔄 **Mode**: Remplacement automatique ({old_count} anciennes prédictions remplacées)\n💾 **Backup**: Ancien fichier sauvegardé automatiquement"
+                        else:
+                            mode_info = "\n🆕 **Mode**: Première importation"
+                    
                     msg = f"""✅ **Import Excel réussi!**
 
 📊 **Résumé**:
 • Prédictions importées: {result['imported']}
 • Prédictions ignorées (déjà lancées): {result['skipped']}{consecutive_info}
-• Total en base: {stats['total']}
+• Total en base: {stats['total']}{mode_info}
 
 📋 **Statistiques**:
 • En attente: {stats['pending']}

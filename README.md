@@ -135,7 +135,7 @@ Si vous voulez changer les canaux après déploiement:
 ## 🎯 Support
 
 **Développé par:** Sossou Kouamé Appolinaire  
-**Version:** 2025-10-05 14:20  
+**Version:** 2025-10-10 10:33  
 **Plateforme:** Replit
 
 **🚀 Le bot est 100% prêt pour Replit!**

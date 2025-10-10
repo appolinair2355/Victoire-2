@@ -1,24 +1,12 @@
 services:
   - type: web
-    name: telegram-card-bot
+    name: telegram-bot-baccarat
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python render_main.py"
     plan: free
-    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: python render_main.py
     envVars:
-      - key: API_ID
-        sync: false
-      - key: API_HASH
-        sync: false
-      - key: BOT_TOKEN
-        sync: false
-      - key: ADMIN_ID
-        sync: false
       - key: PORT
-        fromGroup: web
-      - key: DISPLAY_CHANNEL
-        value: "-1002299981135"
-      - key: PREDICTION_INTERVAL
-        value: "1"
-    healthCheckPath: "/health"
+        value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.0
